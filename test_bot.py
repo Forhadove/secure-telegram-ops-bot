@@ -25,10 +25,12 @@ from bot.telemetry import format_bytes, get_system_telemetry
 class TestSecureOpsBot(unittest.IsolatedAsyncioTestCase):
 
     def test_whitelisted_admins_parsing(self):
-        """Verifies that WHITELISTED_ADMINS parses comma-separated IDs correctly."""
-        self.assertIn(111222333, WHITELISTED_ADMINS)
-        self.assertIn(444555666, WHITELISTED_ADMINS)
-        self.assertNotIn(999999999, WHITELISTED_ADMINS)
+        """Verifies that parse_whitelisted_admins parses comma-separated IDs correctly."""
+        from bot.config import parse_whitelisted_admins
+        parsed = parse_whitelisted_admins("111222333,444555666")
+        self.assertIn(111222333, parsed)
+        self.assertIn(444555666, parsed)
+        self.assertNotIn(999999999, parsed)
 
     def test_unauthorized_audit_logging(self):
         """Verifies that unauthorized attempts are written to security_audit.log."""

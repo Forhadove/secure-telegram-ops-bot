@@ -63,7 +63,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "Your access is verified via <b>Role-Based Access Control (RBAC)</b>.\n\n"
         "Select an operation below or use slash commands:"
     )
-    await update.message.reply_html(welcome_text, reply_markup=get_main_menu_keyboard())
+    if update.effective_message:
+        await update.effective_message.reply_html(welcome_text, reply_markup=get_main_menu_keyboard())
 
 
 @admin_only
@@ -73,7 +74,8 @@ async def sysinfo_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     """
     active = is_pipeline_active()
     telemetry_report = get_system_telemetry(is_pipeline_running=active)
-    await update.message.reply_html(telemetry_report)
+    if update.effective_message:
+        await update.effective_message.reply_html(telemetry_report)
 
 
 @admin_only
@@ -82,6 +84,9 @@ async def run_pipeline_command(update: Update, context: ContextTypes.DEFAULT_TYP
     /run_pipeline: Asynchronously triggers the pipeline workflow in the background.
     Enforces the asyncio.Lock mutex to prevent overlapping runs.
     """
+    if not update.effective_message:
+        return
+
     # Requirement 7: Concurrency Mutex Lock check
     if PIPELINE_LOCK.locked():
         conflict_msg = (
@@ -89,13 +94,13 @@ async def run_pipeline_command(update: Update, context: ContextTypes.DEFAULT_TYP
             "An automation workflow is currently executing in the background.\n"
             "Simultaneous runs are prevented to preserve data integrity."
         )
-        await update.message.reply_html(conflict_msg)
+        await update.effective_message.reply_html(conflict_msg)
         return
 
     # Acquire lock and dispatch background task
     await PIPELINE_LOCK.acquire()
 
-    status_msg = await update.message.reply_html(
+    status_msg = await update.effective_message.reply_html(
         "🚀 <b>Initializing Background Pipeline...</b>\n"
         "Acquired concurrency lock. Starting asynchronous worker..."
     )
@@ -121,8 +126,11 @@ async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """
     /logs: Reads recent security audit log entries.
     """
+    if not update.effective_message:
+        return
+
     if not SECURITY_AUDIT_LOG.exists():
-        await update.message.reply_html("📜 <b>Security Audit Log:</b> Log file is empty or not yet created.")
+        await update.effective_message.reply_html("📜 <b>Security Audit Log:</b> Log file is empty or not yet created.")
         return
 
     try:
@@ -130,16 +138,16 @@ async def logs_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             lines = f.readlines()
         recent = lines[-10:] if len(lines) > 10 else lines
         if not recent:
-            await update.message.reply_html("📜 <b>Security Audit Log:</b> No security incidents recorded.")
+            await update.effective_message.reply_html("📜 <b>Security Audit Log:</b> No security incidents recorded.")
             return
 
         formatted_logs = "".join(recent)
-        await update.message.reply_html(
+        await update.effective_message.reply_html(
             f"📜 <b>Recent Security Audit Log (Last {len(recent)} entries):</b>\n\n"
             f"<pre>{formatted_logs}</pre>"
         )
     except Exception as e:
-        await update.message.reply_html(f"❌ Error reading audit log: {e}")
+        await update.effective_message.reply_html(f"❌ Error reading audit log: {e}")
 
 
 @admin_only
@@ -147,6 +155,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     """
     /help: Displays command usage instructions.
     """
+    if not update.effective_message:
+        return
+
     help_text = (
         "📖 <b>AVAILABLE BOT COMMANDS</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -156,7 +167,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "• /logs — View recent security audit entries\n"
         "• /help — Show this help manual"
     )
-    await update.message.reply_html(help_text)
+    await update.effective_message.reply_html(help_text)
 
 
 # ==============================================================================
@@ -169,46 +180,18 @@ async def callback_button_handler(update: Update, context: ContextTypes.DEFAULT_
     Handles interactive clicks from inline keyboard buttons.
     """
     query = update.callback_query
-    await query.answer()
-    data = query.data
+    if query:
+        await query.answer()
+        data = query.data
 
-    if data == "btn_sysinfo":
-        active = is_pipeline_active()
-        telemetry = get_system_telemetry(is_pipeline_running=active)
-        await query.message.reply_html(telemetry)
-
-    elif data == "btn_run_pipeline":
-        if PIPELINE_LOCK.locked():
-            await query.message.reply_html(
-                "⚠️ <b>409 Conflict: Pipeline Already Running</b>\n\n"
-                "A background pipeline is already active. Please wait for completion."
-            )
-            return
-
-        await PIPELINE_LOCK.acquire()
-        status_msg = await query.message.reply_html(
-            "🚀 <b>Initializing Background Pipeline...</b>\n"
-            "Acquired concurrency lock. Starting asynchronous worker..."
-        )
-
-        async def worker():
-            try:
-                await execute_automation_pipeline(
-                    chat_id=update.effective_chat.id,
-                    status_message=status_msg,
-                    context=context,
-                )
-            finally:
-                if PIPELINE_LOCK.locked():
-                    PIPELINE_LOCK.release()
-
-        asyncio.create_task(worker())
-
-    elif data == "btn_logs":
-        await logs_command(update, context)
-
-    elif data == "btn_help":
-        await help_command(update, context)
+        if data == "btn_sysinfo":
+            await sysinfo_command(update, context)
+        elif data == "btn_run_pipeline":
+            await run_pipeline_command(update, context)
+        elif data == "btn_logs":
+            await logs_command(update, context)
+        elif data == "btn_help":
+            await help_command(update, context)
 
 
 # ==============================================================================
@@ -217,8 +200,8 @@ async def callback_button_handler(update: Update, context: ContextTypes.DEFAULT_
 
 async def unknown_command_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Gracefully handles invalid/unknown slash commands."""
-    if update.message:
-        await update.message.reply_html(
+    if update.effective_message:
+        await update.effective_message.reply_html(
             "❓ <b>Unknown Command</b>\n"
             "Please use /help to see the list of valid operations."
         )

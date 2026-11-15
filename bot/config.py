@@ -18,9 +18,9 @@ SECURITY_AUDIT_LOG = LOGS_DIR / "security_audit.log"
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Load environment variables
+# Load environment variables (override=True ensures latest values are always reloaded)
 ENV_FILE = BASE_DIR / ".env"
-load_dotenv(dotenv_path=ENV_FILE)
+load_dotenv(dotenv_path=ENV_FILE, override=True)
 
 # Bot Configuration
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
